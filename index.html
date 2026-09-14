@@ -306,13 +306,14 @@
     dd.className = 'value ' + (doneDiff < 0 ? 'neg' : 'pos');
     document.getElementById('doneCount').textContent = ` ${doneCount}件`;
 
-    // summary: 予算合計に終了イベントの差分を足し引きした金額
-    const adjusted = totalBudget + doneDiff;
+    // summary: 終了したイベントは予算の代わりに実際に使った額で数えた合計
+    //   = 予算合計 - 終了分の差分（超過ならその分増え、余ればその分減る）
+    const adjusted = totalBudget - doneDiff;
     document.getElementById('sumBudget').textContent = yen(totalBudget);
     document.getElementById('sumSpent').textContent = yen(totalSpent);
     const sa = document.getElementById('sumAdjusted');
     sa.textContent = (adjusted < 0 ? '-' : '') + yen(Math.abs(adjusted));
-    sa.className = 'value ' + (adjusted < totalBudget ? 'neg' : (adjusted > totalBudget ? 'pos' : ''));
+    sa.className = 'value ' + (adjusted > totalBudget ? 'neg' : (adjusted < totalBudget ? 'pos' : ''));
 
     bindCards();
   }
