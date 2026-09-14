@@ -109,6 +109,7 @@
   .add-row input::placeholder { color: #b5b5ba; }
   .tools { display: flex; align-items: center; gap: 4px; padding: 6px 8px 6px 16px; font-size: 12.5px; color: var(--muted); flex-wrap: wrap; }
   .tools .sp { flex: 1; }
+  .tools .note { padding: 6px 8px; font-size: 12.5px; color: var(--muted); }
   .tools button, .tools label { display: inline-flex; align-items: center; gap: 5px; padding: 6px 8px; border-radius: 6px; cursor: pointer; color: var(--muted); font-size: 12.5px; }
   .tools button:hover, .tools label:hover { background: var(--line); color: var(--text); }
   .tools button:disabled { opacity: .3; cursor: default; background: none; }
@@ -125,13 +126,13 @@
     padding: 8px 0 calc(8px + env(safe-area-inset-bottom));
   }
   .summary .inner { max-width: 640px; margin: 0 auto; display: grid; grid-template-columns: repeat(4, 1fr); }
-  .summary .stat { text-align: center; padding: 2px 4px; border-left: 1px solid var(--line); }
+  .summary .stat { text-align: center; padding: 2px 4px; border-left: 1px solid var(--line); min-width: 0; overflow: hidden; }
   .summary .stat:first-child { border-left: none; }
   .summary .label { font-size: 10.5px; color: var(--muted); white-space: nowrap; }
   .summary .value { font-size: 15px; font-weight: 500; font-variant-numeric: tabular-nums; }
   .summary .value.neg { color: var(--red); }
   .summary .value.pos { color: var(--accent); }
-  @media (max-width: 400px) { .summary .value { font-size: 14px; } .summary .label { font-size: 10px; } }
+  @media (max-width: 430px) { .summary .value { font-size: 13.5px; } .summary .label { font-size: 10px; } }
 
   /* ---------- modal ---------- */
   .modal-bg { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.4); z-index: 10; }
@@ -191,7 +192,7 @@
     <div class="stat"><div class="label">予算</div><div class="value" id="sumBudget"></div></div>
     <div class="stat"><div class="label">使った額</div><div class="value" id="sumSpent"></div></div>
     <div class="stat"><div class="label">残り</div><div class="value" id="sumLeft"></div></div>
-    <div class="stat"><div class="label">終了イベント差分 <span id="doneCount"></span></div><div class="value" id="doneDiff"></div></div>
+    <div class="stat"><div class="label">終了分の差分 <span id="doneCount"></span></div><div class="value" id="doneDiff"></div></div>
   </div>
 </div>
 
@@ -291,12 +292,12 @@
     let doneDiff = 0, doneCount = 0;
     const evHtml = md.events.map((ev, idx) => {
       const budget = Number(ev.budget) || 0;
-      const spent = sum(ev.items);
+      const spent = spentOf(ev, budget);
       totalBudget += budget; totalSpent += spent;
       const done = isDone(ev);
       if (done) { doneDiff += budget - spent; doneCount++; }
       return cardHtml({ id: 'event:' + ev.id, name: ev.name, budget, spent, items: ev.items, kind: 'event',
-        done, checked: !!ev.done, hasItems: ev.items.length > 0, first: idx === 0, last: idx === md.events.length - 1 });
+        done, checked: !!ev.done, noSpend: !!ev.noSpend, hasItems: ev.items.length > 0, first: idx === 0, last: idx === md.events.length - 1 });
     }).join('');
     document.getElementById('eventList').innerHTML = evHtml || '<div class="empty">この月の項目はまだありません。＋ から追加できます。</div>';
     const dd = document.getElementById('doneDiff');
@@ -315,14 +316,16 @@
     bindCards();
   }
 
-  // 内訳が1件でもあれば終了扱い。内訳なしでも「終了」チェックで終了扱いにできる
-  const isDone = ev => ev.items.length > 0 || !!ev.done;
+  // 内訳があればその合計が「使った額」。内訳なしの場合は
+  //   「終了」チェック → 予算どおり使ったとみなす／「出費なし」チェック → 0円
+  const isDone = ev => ev.items.length > 0 || !!ev.done || !!ev.noSpend;
+  const spentOf = (ev, budget) => ev.items.length > 0 ? sum(ev.items) : (ev.done ? budget : 0);
 
-  function cardHtml({ id, name, budget, spent, items, kind, done, checked, hasItems, first, last }) {
+  function cardHtml({ id, name, budget, spent, items, kind, done, checked, noSpend, hasItems, first, last }) {
     const diff = budget - spent;
     const isFixed = kind === 'fixed';
     const label = isFixed ? '残り' : '差分';
-    const diffText = (diff < 0 ? '-' : (isFixed ? '' : '+')) + yen(Math.abs(diff));
+    const diffText = (diff < 0 ? '-' : (isFixed || diff === 0 ? '' : '+')) + yen(Math.abs(diff));
     const diffCls = diff < 0 ? 'neg' : (isFixed ? '' : 'pos');
     const pct = budget > 0 ? Math.min(100, spent / budget * 100) : (spent > 0 ? 100 : 0);
     const over = budget > 0 ? spent > budget : spent > 0;
@@ -349,9 +352,9 @@
             <button type="submit">追加</button>
           </form>
           ${isFixed ? '' : `<div class="tools">
-            <label title="${hasItems ? '内訳があるので終了扱いです' : '内訳なしで終了したらチェック'}">
-              <input type="checkbox" data-done ${(checked || hasItems) ? 'checked' : ''} ${hasItems ? 'disabled' : ''}> 終了
-            </label>
+            ${hasItems ? '<span class="note">内訳の合計で計算</span>' : `
+            <label title="予算どおり使ったとして計算します"><input type="checkbox" data-done ${checked ? 'checked' : ''}> 終了</label>
+            <label title="使わなかったとして計算します"><input type="checkbox" data-nospend ${noSpend ? 'checked' : ''}> 出費なし</label>`}
             <span class="edit-budget">予算 <input type="number" min="0" value="${budget}" data-budget></span>
             <span class="sp"></span>
             <button type="button" data-move="-1" title="上へ" ${first ? 'disabled' : ''}>▲</button>
@@ -407,7 +410,14 @@
       });
       const doneCb = card.querySelector('[data-done]');
       if (doneCb) doneCb.addEventListener('change', () => {
-        resolve(card).ev.done = doneCb.checked;
+        const { ev } = resolve(card);
+        ev.done = doneCb.checked; if (ev.done) ev.noSpend = false;
+        save(); render();
+      });
+      const noSpendCb = card.querySelector('[data-nospend]');
+      if (noSpendCb) noSpendCb.addEventListener('change', () => {
+        const { ev } = resolve(card);
+        ev.noSpend = noSpendCb.checked; if (ev.noSpend) ev.done = false;
         save(); render();
       });
       card.querySelectorAll('[data-move]').forEach(btn => btn.addEventListener('click', () => {
