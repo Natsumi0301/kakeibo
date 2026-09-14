@@ -294,7 +294,8 @@
   function applySettingsTo(md) {
     md.budgets = { ...state.fixedBudgets };
     const old = md.costs || [];
-    md.costs = state.fixedCosts.map(c => {
+    const removed = md.removedCosts || [];   // この月から外した固定費は戻さない
+    md.costs = state.fixedCosts.filter(c => !removed.includes(c.id)).map(c => {
       const prev = old.find(o => o.id === c.id);
       return { id: c.id, name: c.name, amount: c.amount, items: prev ? prev.items : [] };
     });
@@ -405,7 +406,7 @@
           </form>
           ${isFixed ? '' : `<div class="note-row"><span class="note-label">備考</span><textarea rows="1" data-note placeholder="メモを書く（日程、同行者、注意点など）">${esc(note || '')}</textarea></div>`}
           ${isFixed ? `<div class="tools"><span class="edit-budget">この月の予算 <input type="number" min="0" value="${budget}" data-budget></span></div>` : ''}
-          ${isCost ? `<div class="tools"><span class="edit-budget">この月の金額 <input type="number" min="0" value="${budget}" data-budget></span></div>` : ''}
+          ${isCost ? `<div class="tools"><span class="edit-budget">この月の金額 <input type="number" min="0" value="${budget}" data-budget></span><span class="sp"></span><button type="button" class="danger" data-del-cost-row>この月から削除</button></div>` : ''}
           ${isEvent ? `<div class="tools">
             ${hasItems ? '<span class="note">内訳の合計で計算</span>' : `
             <label title="予算どおり使ったとして計算します"><input type="checkbox" data-done ${checked ? 'checked' : ''}> 終了</label>
@@ -475,6 +476,17 @@
         resolve(card).items.splice(Number(btn.dataset.delItem), 1);
         save(); render();
       }));
+      const delCost = card.querySelector('[data-del-cost-row]');
+      if (delCost) delCost.addEventListener('click', () => {
+        const { ev } = resolve(card);
+        if (!confirm(`「${ev.name}」をこの月から外しますか？
+（設定に残っているので、他の月には影響しません）`)) return;
+        const md = monthData(currentKey);
+        md.costs = md.costs.filter(c => c !== ev);
+        (md.removedCosts = md.removedCosts || []).push(ev.id);
+        openCards.delete(id);
+        save(); render();
+      });
       const delEv = card.querySelector('[data-del-event]');
       if (delEv) delEv.addEventListener('click', () => {
         const { ev } = resolve(card);
