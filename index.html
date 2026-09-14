@@ -344,7 +344,7 @@
         <div class="details">
           <ul class="items">${itemsHtml}</ul>
           <form class="add-row" data-add-item>
-            <input class="iname" placeholder="内訳を追加（例：グッズ）" required>
+            <input class="iname" placeholder="内訳（空欄なら「${esc(name)}」）">
             <input class="iamt" type="number" min="0" placeholder="金額" required>
             <button type="submit">追加</button>
           </form>
@@ -384,8 +384,8 @@
       card.querySelector('[data-add-item]').addEventListener('submit', e => {
         e.preventDefault();
         const nameEl = e.target.querySelector('.iname'), amtEl = e.target.querySelector('.iamt');
-        const name = nameEl.value.trim(), amount = Number(amtEl.value);
-        if (!name || !(amount >= 0)) return;
+        const name = nameEl.value.trim() || card.querySelector('.row-name > span').textContent, amount = Number(amtEl.value);
+        if (!(amount >= 0)) return;
         resolve(card).items.push({ name, amount });
         openCards.add(id);
         save(); render();
