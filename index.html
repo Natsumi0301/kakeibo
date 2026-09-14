@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
 <title>家計簿</title>
 <style>
   :root {
@@ -40,7 +40,7 @@
     -webkit-font-smoothing: antialiased;
   }
   button { font: inherit; cursor: pointer; border: none; background: none; color: inherit; padding: 0; }
-  input, textarea { font: inherit; color: var(--text); }
+  input, textarea { font: inherit; color: var(--text); font-size: 16px; }
   .num { font-variant-numeric: tabular-nums; }
 
   /* ---------- app bar ---------- */
@@ -102,7 +102,7 @@
   .items li button.link:hover { color: var(--red); }
   .items li.empty { color: var(--muted); font-size: 12.5px; padding: 9px 16px 9px 28px; text-align: left; }
   .add-row { display: flex; gap: 0; background: var(--card); border-bottom: 1px solid var(--line); padding-left: 16px; }
-  .add-row input { border: none; background: none; padding: 10px 8px; outline: none; min-width: 0; font-size: 14px; }
+  .add-row input { border: none; background: none; padding: 10px 8px; outline: none; min-width: 0; font-size: 16px; }
   .add-row input.iname { flex: 1; }
   .add-row input.iamt { width: 7.5em; text-align: right; font-variant-numeric: tabular-nums; }
   .add-row button { color: var(--accent); font-weight: 500; padding: 0 16px; font-size: 14px; }
@@ -115,7 +115,7 @@
   .tools button.danger:hover { color: var(--red); background: var(--red-soft); }
   .tools input[type=checkbox] { margin: 0; width: 14px; height: 14px; accent-color: var(--accent); }
   .tools .edit-budget { display: inline-flex; align-items: center; gap: 4px; }
-  .tools .edit-budget input { width: 6.5em; border: none; border-bottom: 1px solid #c8c8cc; background: none; padding: 2px 4px; text-align: right; font-variant-numeric: tabular-nums; font-size: 13px; outline: none; }
+  .tools .edit-budget input { width: 6.5em; border: none; border-bottom: 1px solid #c8c8cc; background: none; padding: 2px 4px; text-align: right; font-variant-numeric: tabular-nums; font-size: 16px; outline: none; }
   .tools .edit-budget input:focus { border-color: var(--accent); }
 
   /* ---------- summary ---------- */
@@ -148,9 +148,9 @@
   .modal label { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 0 16px; height: 46px; border-top: 1px solid var(--line); font-size: 14px; }
   .modal label:last-of-type { border-bottom: 1px solid var(--line); }
   .modal label span { color: var(--muted); }
-  .modal label input { border: none; background: none; outline: none; text-align: right; flex: 1; font-size: 15px; font-variant-numeric: tabular-nums; }
+  .modal label input { border: none; background: none; outline: none; text-align: right; flex: 1; font-size: 16px; font-variant-numeric: tabular-nums; }
   .modal label input::placeholder { color: #b5b5ba; }
-  .modal textarea { display: block; width: calc(100% - 32px); margin: 0 16px; height: 90px; font: 12px ui-monospace, Menlo, Consolas, monospace; border: 1px solid var(--line); border-radius: 8px; padding: 8px; background: var(--bg); resize: vertical; outline: none; }
+  .modal textarea { display: block; width: calc(100% - 32px); margin: 0 16px; height: 90px; font: 16px ui-monospace, Menlo, Consolas, monospace; border: 1px solid var(--line); border-radius: 8px; padding: 8px; background: var(--bg); resize: vertical; outline: none; }
   .modal .row { display: flex; gap: 8px; padding: 14px 16px 4px; }
   .modal .row button { flex: 1; height: 42px; border-radius: 10px; font-weight: 500; font-size: 15px; background: var(--bg); color: var(--text); }
   .modal .row button.primary { background: var(--bar); color: #fff; }
