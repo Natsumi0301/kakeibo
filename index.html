@@ -80,6 +80,11 @@
   .row-sub { font-size: 12px; color: var(--muted); margin-top: 2px; font-variant-numeric: tabular-nums; }
   .row-sub b { font-weight: 500; color: var(--text); }
   .row-sub span { white-space: nowrap; margin-right: 10px; }
+  .row-note { font-size: 12px; color: var(--muted); margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .note-row { display: flex; align-items: flex-start; gap: 8px; background: var(--card); border-bottom: 1px solid var(--line); padding: 8px 16px; }
+  .note-label { font-size: 12px; color: var(--muted); padding-top: 4px; white-space: nowrap; }
+  .note-row textarea { flex: 1; border: none; background: none; outline: none; resize: none; padding: 2px 4px; min-height: 24px; line-height: 1.4; font-size: 16px; border-radius: 4px; overflow: hidden; }
+  .note-row textarea:focus { background: var(--bg); }
   .row-amt { text-align: right; flex-shrink: 0; }
   .row-amt .label { font-size: 10.5px; color: var(--muted); }
   .row-amt .value { font-size: 17px; font-weight: 500; font-variant-numeric: tabular-nums; line-height: 1.2; }
@@ -97,8 +102,12 @@
   .card.open .details { display: block; }
   .items { list-style: none; margin: 0; padding: 0; }
   .items li { display: flex; align-items: center; gap: 8px; padding: 9px 16px 9px 28px; border-bottom: 1px solid var(--line); font-size: 14px; background: var(--card); }
-  .items li .iname { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-  .items li .iamt { font-variant-numeric: tabular-nums; min-width: 6em; text-align: right; }
+  .items li input { border: none; background: none; outline: none; padding: 2px 4px; border-radius: 4px; min-width: 0; }
+  .items li input:focus { background: var(--bg); }
+  .items li .iname { flex: 1; }
+  .items li .yen { color: var(--muted); font-size: 13px; margin-right: -6px; }
+  .items li .iamt { width: 6.5em; text-align: right; font-variant-numeric: tabular-nums; -moz-appearance: textfield; }
+  .items li .iamt::-webkit-inner-spin-button, .items li .iamt::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
   .items li button.link { color: #c8c8cc; font-size: 16px; padding: 0 0 0 8px; line-height: 1; }
   .items li button.link:hover { color: var(--red); }
   .items li.empty { color: var(--muted); font-size: 12.5px; padding: 9px 16px 9px 28px; text-align: left; }
@@ -298,7 +307,7 @@
       const done = isDone(ev);
       if (done) { doneDiff += budget - spent; doneCount++; }
       return cardHtml({ id: 'event:' + ev.id, name: ev.name, budget, spent, items: ev.items, kind: 'event',
-        done, checked: !!ev.done, noSpend: !!ev.noSpend, hasItems: ev.items.length > 0, first: idx === 0, last: idx === md.events.length - 1 });
+        done, checked: !!ev.done, noSpend: !!ev.noSpend, hasItems: ev.items.length > 0, first: idx === 0, last: idx === md.events.length - 1, note: ev.note });
     }).join('');
     document.getElementById('eventList').innerHTML = evHtml || '<div class="empty">この月の項目はまだありません。＋ から追加できます。</div>';
     const dd = document.getElementById('doneDiff');
@@ -323,7 +332,7 @@
   const isDone = ev => ev.items.length > 0 || !!ev.done || !!ev.noSpend;
   const spentOf = (ev, budget) => ev.items.length > 0 ? sum(ev.items) : (ev.done ? budget : 0);
 
-  function cardHtml({ id, name, budget, spent, items, kind, done, checked, noSpend, hasItems, first, last }) {
+  function cardHtml({ id, name, budget, spent, items, kind, done, checked, noSpend, hasItems, first, last, note }) {
     const diff = budget - spent;
     const isFixed = kind === 'fixed';
     const label = isFixed ? '残り' : '差分';
@@ -333,7 +342,10 @@
     const over = budget > 0 ? spent > budget : spent > 0;
     const open = openCards.has(id) ? 'open' : '';
     const itemsHtml = items.length
-      ? items.map((it, i) => `<li><span class="iname">${esc(it.name)}</span><span class="iamt">${yen(it.amount)}</span><button class="link" data-del-item="${i}" title="削除">×</button></li>`).join('')
+      ? items.map((it, i) => `<li>
+          <input class="iname" value="${esc(it.name)}" data-edit-name="${i}" placeholder="内訳">
+          <span class="yen">¥</span><input class="iamt" type="number" min="0" value="${Number(it.amount) || 0}" data-edit-amt="${i}">
+          <button class="link" data-del-item="${i}" title="削除">×</button></li>`).join('')
       : '<li class="empty">内訳なし</li>';
     return `
       <div class="card ${open}" data-card="${esc(id)}">
@@ -342,6 +354,7 @@
           <div class="row-main">
             <div class="row-name"><span>${esc(name)}</span>${done ? '<span class="badge">済</span>' : ''}</div>
             <div class="row-sub"><span>予算 <b>${yen(budget)}</b></span> <span>使った額 <b>${yen(spent)}</b></span></div>
+            ${note ? `<div class="row-note">${esc(note)}</div>` : ''}
           </div>
           <div class="row-amt"><div class="label">${label}</div><div class="value ${diffCls}">${diffText}</div></div>
         </div>
@@ -349,10 +362,11 @@
         <div class="details">
           <ul class="items">${itemsHtml}</ul>
           <form class="add-row" data-add-item>
-            <input class="iname" placeholder="内訳（空欄なら「${esc(name)}」）">
+            <input class="iname" placeholder="内訳（空欄なら「${esc(name)}」）" title="空欄のまま追加すると「${esc(name)}」になります">
             <input class="iamt" type="number" min="0" placeholder="金額" required>
             <button type="submit">追加</button>
           </form>
+          ${isFixed ? '' : `<div class="note-row"><span class="note-label">備考</span><textarea rows="1" data-note placeholder="メモを書く（日程、同行者、注意点など）">${esc(note || '')}</textarea></div>`}
           ${isFixed ? '' : `<div class="tools">
             ${hasItems ? '<span class="note">内訳の合計で計算</span>' : `
             <label title="予算どおり使ったとして計算します"><input type="checkbox" data-done ${checked ? 'checked' : ''}> 終了</label>
@@ -385,6 +399,7 @@
         if (e.target.closest('button, label, input, [data-drag]')) return;
         card.classList.toggle('open');
         if (card.classList.contains('open')) openCards.add(id); else openCards.delete(id);
+        card.querySelectorAll('[data-note]').forEach(t => { t.style.height = 'auto'; t.style.height = t.scrollHeight + 'px'; });
       });
       card.querySelector('[data-add-item]').addEventListener('submit', e => {
         e.preventDefault();
@@ -397,6 +412,22 @@
         const c = document.querySelector(`[data-card="${CSS.escape(id)}"] .iname`);
         if (c) c.focus();
       });
+      card.querySelectorAll('[data-edit-name]').forEach(inp => inp.addEventListener('change', () => {
+        const it = resolve(card).items[Number(inp.dataset.editName)];
+        it.name = inp.value.trim() || card.querySelector('.row-name > span').textContent;
+        save(); render();
+      }));
+      card.querySelectorAll('[data-edit-amt]').forEach(inp => inp.addEventListener('change', () => {
+        resolve(card).items[Number(inp.dataset.editAmt)].amount = Number(inp.value) || 0;
+        save(); render();
+      }));
+      const noteEl = card.querySelector('[data-note]');
+      if (noteEl) {
+        const grow = () => { noteEl.style.height = 'auto'; noteEl.style.height = noteEl.scrollHeight + 'px'; };
+        grow();
+        noteEl.addEventListener('input', grow);
+        noteEl.addEventListener('change', () => { resolve(card).ev.note = noteEl.value.trim(); save(); render(); });
+      }
       card.querySelectorAll('[data-del-item]').forEach(btn => btn.addEventListener('click', () => {
         resolve(card).items.splice(Number(btn.dataset.delItem), 1);
         save(); render();
