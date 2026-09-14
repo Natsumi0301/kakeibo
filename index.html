@@ -120,6 +120,11 @@
   .tools { display: flex; align-items: center; gap: 4px; padding: 6px 8px 6px 16px; font-size: 12.5px; color: var(--muted); flex-wrap: wrap; }
   .tools .sp { flex: 1; }
   .tools .note { padding: 6px 8px; font-size: 12.5px; color: var(--muted); }
+  .modal label.cost { gap: 8px; }
+  .modal label.cost input.cname { text-align: left; flex: 1.4; }
+  .modal label.cost input.camt { flex: 1; }
+  .modal label.cost button { color: #c8c8cc; font-size: 18px; padding: 0 4px; }
+  .modal label.cost button:hover { color: var(--red); }
   .tools button, .tools label { display: inline-flex; align-items: center; gap: 5px; padding: 6px 8px; border-radius: 6px; cursor: pointer; color: var(--muted); font-size: 12.5px; }
   .tools button:hover, .tools label:hover { background: var(--line); color: var(--text); }
   .tools button:disabled { opacity: .3; cursor: default; background: none; }
@@ -158,8 +163,9 @@
   .modal h3 { margin: 0; padding: 12px 16px; font-size: 15px; font-weight: 600; text-align: center; }
   .modal label { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 0 16px; height: 46px; border-top: 1px solid var(--line); font-size: 14px; }
   .modal label:last-of-type { border-bottom: 1px solid var(--line); }
-  .modal label span { color: var(--muted); }
-  .modal label input { border: none; background: none; outline: none; text-align: right; flex: 1; font-size: 16px; font-variant-numeric: tabular-nums; }
+  .modal label span { color: var(--muted); white-space: nowrap; flex-shrink: 0; }
+  .modal label input { border: none; background: none; outline: none; text-align: right; flex: 1; min-width: 0; width: 100%; font-size: 16px; font-variant-numeric: tabular-nums; }
+  .modal { overflow-x: hidden; }
   .modal label input::placeholder { color: #b5b5ba; }
   .modal textarea { display: block; width: calc(100% - 32px); margin: 0 16px; height: 90px; font: 16px ui-monospace, Menlo, Consolas, monospace; border: 1px solid var(--line); border-radius: 8px; padding: 8px; background: var(--bg); resize: vertical; outline: none; }
   .modal .row { display: flex; gap: 8px; padding: 14px 16px 4px; }
@@ -195,6 +201,9 @@
 
   <h2><span>固定枠</span></h2>
   <div class="list" id="fixedList"></div>
+
+  <h2><span>固定費</span></h2>
+  <div class="list" id="costList"></div>
 </div>
 
 <div class="summary">
@@ -210,6 +219,10 @@
   <div class="modal">
     <h3>固定枠の毎月予算</h3>
     <div id="fixedBudgetInputs"></div>
+    <h3>固定費（家賃・サブスクなど）</h3>
+    <div id="fixedCostInputs"></div>
+    <div class="row"><button id="addCostBtn">＋ 固定費を追加</button></div>
+    <p class="hint">変更は今月以降に反映されます。過去の月は各月の画面で直接編集できます。</p>
     <div class="row"><button id="closeSettings">閉じる</button><button class="primary" id="saveSettings">保存</button></div>
     <hr>
     <h3>データの引き継ぎ</h3>
@@ -247,7 +260,7 @@
       const s = JSON.parse(localStorage.getItem(KEY));
       if (s && s.months) return s;
     } catch (e) {}
-    return { fixedBudgets: { 交通費: 0, 食費: 0, 生活費: 0 }, months: {} };
+    return { fixedBudgets: { 交通費: 0, 食費: 0, 生活費: 0 }, fixedCosts: [], months: {} };
   }
   function save() { try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) {} }
 
@@ -263,13 +276,28 @@
     y += Math.floor(m / 12); m = ((m % 12) + 12) % 12;
     return `${y}-${String(m + 1).padStart(2, '0')}`;
   }
+  // 各月は作成時点の設定（固定枠の予算・固定費）を自分の中に持つ。
+  // 設定を変えても過去の月は変わらず、各月の画面で個別に直せる。
   function monthData(key) {
+    if (!state.fixedCosts) state.fixedCosts = [];
     if (!state.months[key]) {
-      state.months[key] = { fixed: {}, events: [] };
+      state.months[key] = { fixed: {}, events: [], budgets: {}, costs: [] };
+      applySettingsTo(state.months[key]);
     }
     const md = state.months[key];
     FIXED.forEach(f => { if (!md.fixed[f]) md.fixed[f] = []; });
+    if (!md.budgets) md.budgets = { ...state.fixedBudgets };
+    if (!md.costs) md.costs = state.fixedCosts.map(c => ({ ...c, items: [] }));
     return md;
+  }
+  // 設定内容をその月にコピーする（固定費の内訳メモは残す）
+  function applySettingsTo(md) {
+    md.budgets = { ...state.fixedBudgets };
+    const old = md.costs || [];
+    md.costs = state.fixedCosts.map(c => {
+      const prev = old.find(o => o.id === c.id);
+      return { id: c.id, name: c.name, amount: c.amount, items: prev ? prev.items : [] };
+    });
   }
 
   // ---------- utils ----------
@@ -290,13 +318,21 @@
     // fixed
     let totalBudget = 0, totalSpent = 0;
     const fixedHtml = FIXED.map(f => {
-      const budget = Number(state.fixedBudgets[f]) || 0;
+      const budget = Number(md.budgets[f]) || 0;
       const items = md.fixed[f];
       const spent = sum(items);
       totalBudget += budget; totalSpent += spent;
       return cardHtml({ id: 'fixed:' + f, name: f, budget, spent, items, kind: 'fixed' });
     }).join('');
     document.getElementById('fixedList').innerHTML = fixedHtml;
+
+    // fixed costs: 最初から使った扱い。内訳はメモで計算に使わない
+    const costHtml = md.costs.map(c => {
+      const amount = Number(c.amount) || 0;
+      totalBudget += amount; totalSpent += amount;
+      return cardHtml({ id: 'cost:' + c.id, name: c.name, budget: amount, spent: amount, items: c.items, kind: 'cost', note: c.note });
+    }).join('');
+    document.getElementById('costList').innerHTML = costHtml || '<div class="empty">固定費は ⚙ 設定から登録できます。</div>';
 
     // events
     let doneDiff = 0, doneCount = 0;
@@ -334,10 +370,10 @@
 
   function cardHtml({ id, name, budget, spent, items, kind, done, checked, noSpend, hasItems, first, last, note }) {
     const diff = budget - spent;
-    const isFixed = kind === 'fixed';
-    const label = isFixed ? '残り' : '差分';
-    const diffText = (diff < 0 ? '-' : (isFixed || diff === 0 ? '' : '+')) + yen(Math.abs(diff));
-    const diffCls = diff < 0 ? 'neg' : (isFixed ? '' : 'pos');
+    const isFixed = kind === 'fixed', isCost = kind === 'cost', isEvent = kind === 'event';
+    const label = isCost ? '固定費' : (isFixed ? '残り' : '差分');
+    const diffText = isCost ? yen(budget) : (diff < 0 ? '-' : (isFixed || diff === 0 ? '' : '+')) + yen(Math.abs(diff));
+    const diffCls = isCost ? '' : (diff < 0 ? 'neg' : (isFixed ? '' : 'pos'));
     const pct = budget > 0 ? Math.min(100, spent / budget * 100) : (spent > 0 ? 100 : 0);
     const over = budget > 0 ? spent > budget : spent > 0;
     const open = openCards.has(id) ? 'open' : '';
@@ -350,16 +386,17 @@
     return `
       <div class="card ${open}" data-card="${esc(id)}">
         <div class="row" data-toggle>
-          ${isFixed ? '' : '<span class="drag-handle" data-drag title="ドラッグで並べ替え">≡</span>'}
+          ${isEvent ? '<span class="drag-handle" data-drag title="ドラッグで並べ替え">≡</span>' : ''}
           <div class="row-main">
             <div class="row-name"><span>${esc(name)}</span>${done ? '<span class="badge">済</span>' : ''}</div>
-            <div class="row-sub"><span>予算 <b>${yen(budget)}</b></span> <span>使った額 <b>${yen(spent)}</b></span></div>
+            <div class="row-sub">${isCost ? '<span>毎月かかる固定の支出</span>' : `<span>予算 <b>${yen(budget)}</b></span> <span>使った額 <b>${yen(spent)}</b></span>`}</div>
             ${note ? `<div class="row-note">${esc(note)}</div>` : ''}
           </div>
           <div class="row-amt"><div class="label">${label}</div><div class="value ${diffCls}">${diffText}</div></div>
         </div>
-        <div class="bar"><div class="${over ? 'over' : ''}" style="width:${pct}%"></div></div>
+        ${isCost ? '' : `<div class="bar"><div class="${over ? 'over' : ''}" style="width:${pct}%"></div></div>`}
         <div class="details">
+          ${isCost ? '<div class="tools"><span class="note">内訳はメモ用で、金額の計算には使いません</span></div>' : ''}
           <ul class="items">${itemsHtml}</ul>
           <form class="add-row" data-add-item>
             <input class="iname" placeholder="内訳（空欄なら「${esc(name)}」）" title="空欄のまま追加すると「${esc(name)}」になります">
@@ -367,7 +404,9 @@
             <button type="submit">追加</button>
           </form>
           ${isFixed ? '' : `<div class="note-row"><span class="note-label">備考</span><textarea rows="1" data-note placeholder="メモを書く（日程、同行者、注意点など）">${esc(note || '')}</textarea></div>`}
-          ${isFixed ? '' : `<div class="tools">
+          ${isFixed ? `<div class="tools"><span class="edit-budget">この月の予算 <input type="number" min="0" value="${budget}" data-budget></span></div>` : ''}
+          ${isCost ? `<div class="tools"><span class="edit-budget">この月の金額 <input type="number" min="0" value="${budget}" data-budget></span></div>` : ''}
+          ${isEvent ? `<div class="tools">
             ${hasItems ? '<span class="note">内訳の合計で計算</span>' : `
             <label title="予算どおり使ったとして計算します"><input type="checkbox" data-done ${checked ? 'checked' : ''}> 終了</label>
             <label title="使わなかったとして計算します"><input type="checkbox" data-nospend ${noSpend ? 'checked' : ''}> 出費なし</label>`}
@@ -376,7 +415,7 @@
             <button type="button" data-move="-1" title="上へ" ${first ? 'disabled' : ''}>▲</button>
             <button type="button" data-move="1" title="下へ" ${last ? 'disabled' : ''}>▼</button>
             <button type="button" class="danger" data-del-event>削除</button>
-          </div>`}
+          </div>` : ''}
         </div>
       </div>`;
   }
@@ -386,7 +425,11 @@
     const md = monthData(currentKey);
     if (id.startsWith('fixed:')) {
       const f = id.slice(6);
-      return { items: md.fixed[f] };
+      return { items: md.fixed[f], fixedKey: f };
+    }
+    if (id.startsWith('cost:')) {
+      const c = md.costs.find(x => x.id === id.slice(5));
+      return { items: c.items, ev: c };
     }
     const ev = md.events.find(e => e.id === id.slice(6));
     return { items: ev.items, ev };
@@ -488,7 +531,10 @@
       });
       const bud = card.querySelector('[data-budget]');
       if (bud) bud.addEventListener('change', () => {
-        resolve(card).ev.budget = Number(bud.value) || 0;
+        const r = resolve(card), v = Number(bud.value) || 0;
+        if (r.fixedKey) monthData(currentKey).budgets[r.fixedKey] = v;
+        else if (card.dataset.card.startsWith('cost:')) r.ev.amount = v;
+        else r.ev.budget = v;
         save(); render();
       });
     });
@@ -504,12 +550,38 @@
   document.getElementById('settingsBtn').onclick = () => {
     document.getElementById('fixedBudgetInputs').innerHTML = FIXED.map(f =>
       `<label><span>${f}</span><input type="number" min="0" data-fixed="${f}" value="${Number(state.fixedBudgets[f]) || 0}"></label>`).join('');
+    renderCostInputs(state.fixedCosts || []);
     document.getElementById('exportArea').value = '';
     settingsModal.classList.add('show');
+  };
+  function renderCostInputs(costs) {
+    document.getElementById('fixedCostInputs').innerHTML = costs.map(c =>
+      `<label class="cost" data-cost-id="${esc(c.id)}">
+        <input type="text" class="cname" placeholder="名前（例：家賃）" value="${esc(c.name)}">
+        <input type="number" class="camt" min="0" placeholder="金額" value="${Number(c.amount) || 0}">
+        <button type="button" data-del-cost title="削除">×</button>
+      </label>`).join('') || '<p class="hint">まだ登録がありません</p>';
+    document.querySelectorAll('[data-del-cost]').forEach(b => b.onclick = () => {
+      renderCostInputs(readCostInputs().filter(c => c.id !== b.closest('label').dataset.costId));
+    });
+  }
+  function readCostInputs() {
+    return [...document.querySelectorAll('#fixedCostInputs label.cost')].map(l => ({
+      id: l.dataset.costId, name: l.querySelector('.cname').value.trim(), amount: Number(l.querySelector('.camt').value) || 0 }));
+  }
+  document.getElementById('addCostBtn').onclick = () => {
+    renderCostInputs([...readCostInputs(), { id: uid(), name: '', amount: 0 }]);
+    const last = document.querySelector('#fixedCostInputs label.cost:last-child .cname');
+    if (last) last.focus();
   };
   document.getElementById('closeSettings').onclick = () => settingsModal.classList.remove('show');
   document.getElementById('saveSettings').onclick = () => {
     document.querySelectorAll('[data-fixed]').forEach(i => { state.fixedBudgets[i.dataset.fixed] = Number(i.value) || 0; });
+    state.fixedCosts = readCostInputs().filter(c => c.name);
+    // 今月以降の月にだけ反映する（過去の月はそのまま）
+    const thisKey = monthKeyOf(new Date());
+    Object.keys(state.months).forEach(k => { if (k >= thisKey) applySettingsTo(monthData(k)); });
+    monthData(thisKey);
     save(); render(); settingsModal.classList.remove('show');
   };
   document.getElementById('exportBtn').onclick = () => {
