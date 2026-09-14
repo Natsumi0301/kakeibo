@@ -129,7 +129,7 @@
   .summary .inner { max-width: 640px; margin: 0 auto; display: grid; grid-template-columns: repeat(4, 1fr); }
   .summary .stat { text-align: center; padding: 2px 4px; border-left: 1px solid var(--line); min-width: 0; overflow: hidden; }
   .summary .stat:first-child { border-left: none; }
-  .summary .label { font-size: 10.5px; color: var(--muted); white-space: nowrap; }
+  .summary .label { font-size: 10.5px; color: var(--muted); line-height: 1.2; }
   .summary .value { font-size: 15px; font-weight: 500; font-variant-numeric: tabular-nums; white-space: nowrap; }
   .summary .value.neg { color: var(--red); }
   .summary .value.pos { color: var(--accent); }
@@ -192,8 +192,8 @@
   <div class="inner">
     <div class="stat"><div class="label">予算</div><div class="value" id="sumBudget"></div></div>
     <div class="stat"><div class="label">使った額</div><div class="value" id="sumSpent"></div></div>
-    <div class="stat"><div class="label">残り</div><div class="value" id="sumLeft"></div></div>
-    <div class="stat"><div class="label">終了分の差分 <span id="doneCount"></span></div><div class="value" id="doneDiff"></div></div>
+    <div class="stat"><div class="label">終了分の差分<span id="doneCount"></span></div><div class="value" id="doneDiff"></div></div>
+    <div class="stat"><div class="label">差分込みの予算</div><div class="value" id="sumAdjusted"></div></div>
   </div>
 </div>
 
@@ -302,17 +302,17 @@
     }).join('');
     document.getElementById('eventList').innerHTML = evHtml || '<div class="empty">この月の項目はまだありません。＋ から追加できます。</div>';
     const dd = document.getElementById('doneDiff');
-    dd.textContent = (doneDiff < 0 ? '-' : '+') + yen(Math.abs(doneDiff));
+    dd.textContent = (doneDiff < 0 ? '-' : (doneDiff === 0 ? '' : '+')) + yen(Math.abs(doneDiff));
     dd.className = 'value ' + (doneDiff < 0 ? 'neg' : 'pos');
-    document.getElementById('doneCount').textContent = `(${doneCount}件)`;
+    document.getElementById('doneCount').textContent = ` ${doneCount}件`;
 
-    // summary
-    const left = totalBudget - totalSpent;
+    // summary: 予算合計に終了イベントの差分を足し引きした金額
+    const adjusted = totalBudget + doneDiff;
     document.getElementById('sumBudget').textContent = yen(totalBudget);
     document.getElementById('sumSpent').textContent = yen(totalSpent);
-    const sl = document.getElementById('sumLeft');
-    sl.textContent = (left < 0 ? '-' : '') + yen(Math.abs(left));
-    sl.className = 'value ' + (left < 0 ? 'neg' : '');
+    const sa = document.getElementById('sumAdjusted');
+    sa.textContent = (adjusted < 0 ? '-' : '') + yen(Math.abs(adjusted));
+    sa.className = 'value ' + (adjusted < totalBudget ? 'neg' : (adjusted > totalBudget ? 'pos' : ''));
 
     bindCards();
   }
