@@ -389,8 +389,9 @@
       totalBudget += budget; totalSpent += spent;
       const done = isDone(ev);
       if (done) { doneDiff += budget - spent; doneCount++; }
+      // カード支払いの既定値: 内訳があればその金額、なければ予算額（出費なしなら0）。終了チェックは関係なし
       if (ev.items.length) ev.items.forEach(it => { cardTotal += cardOf(it, Number(it.amount) || 0); });
-      else cardTotal += cardOf(ev, spent);
+      else cardTotal += cardOf(ev, ev.noSpend ? 0 : budget);
       return cardHtml({ id: 'event:' + ev.id, name: ev.name, budget, spent, items: ev.items, kind: 'event',
         done, checked: !!ev.done, noSpend: !!ev.noSpend, hasItems: ev.items.length > 0, first: idx === 0, last: idx === md.events.length - 1, note: ev.note, pay: ev });
     }).join('');
