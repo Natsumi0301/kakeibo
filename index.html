@@ -102,6 +102,16 @@
   .card.open .details { display: block; }
   .items { list-style: none; margin: 0; padding: 0; }
   .items li { display: flex; align-items: center; gap: 8px; padding: 9px 16px 9px 28px; border-bottom: 1px solid var(--line); font-size: 14px; background: var(--card); }
+  .items li { flex-wrap: wrap; }
+  .items li .item-opts { flex-basis: 100%; display: flex; align-items: center; gap: 4px; padding-left: 4px; font-size: 12px; color: var(--muted); flex-wrap: wrap; }
+  .items li .item-opts label { display: inline-flex; align-items: center; gap: 4px; padding: 4px 6px; border-radius: 6px; cursor: pointer; }
+  .items li .item-opts label:hover { background: var(--bg); }
+  .items li .item-opts input[type=checkbox] { margin: 0; width: 14px; height: 14px; accent-color: var(--accent); }
+  .items li .item-opts .pay input[type=number] { width: 5.5em; border: none; border-bottom: 1px solid #d5d5d9; background: none; padding: 1px 4px; text-align: right; font-variant-numeric: tabular-nums; font-size: 16px; outline: none; border-radius: 0; }
+  .items li .item-opts .pay input:focus { border-color: var(--accent); }
+  .items li .item-opts .pay input::placeholder { color: #c0c0c4; font-size: 12px; }
+  .items li .item-opts button { margin-left: auto; padding: 4px 8px; border-radius: 6px; color: var(--muted); font-size: 12px; }
+  .items li .item-opts button:hover { background: var(--bg); color: var(--text); }
   .items li input { border: none; background: none; outline: none; padding: 2px 4px; border-radius: 4px; min-width: 0; }
   .items li input:focus { background: var(--bg); }
   .items li .iname { flex: 1; }
@@ -355,7 +365,7 @@
       const items = md.fixed[f];
       const spent = sum(items);
       totalBudget += budget; totalSpent += spent; fixedLeft += budget - spent;
-      cardTotal += cardOf(md.fixedPay[f], spent);
+      items.forEach(it => { cardTotal += cardOf(it, Number(it.amount) || 0); });
       return cardHtml({ id: 'fixed:' + f, name: f, budget, spent, items, kind: 'fixed', pay: md.fixedPay[f] });
     }).join('');
     document.getElementById('fixedList').innerHTML = fixedHtml;
@@ -377,7 +387,8 @@
       totalBudget += budget; totalSpent += spent;
       const done = isDone(ev);
       if (done) { doneDiff += budget - spent; doneCount++; }
-      cardTotal += cardOf(ev, spent);
+      if (ev.items.length) ev.items.forEach(it => { cardTotal += cardOf(it, Number(it.amount) || 0); });
+      else cardTotal += cardOf(ev, spent);
       return cardHtml({ id: 'event:' + ev.id, name: ev.name, budget, spent, items: ev.items, kind: 'event',
         done, checked: !!ev.done, noSpend: !!ev.noSpend, hasItems: ev.items.length > 0, first: idx === 0, last: idx === md.events.length - 1, note: ev.note, pay: ev });
     }).join('');
@@ -427,7 +438,12 @@
       ? items.map((it, i) => `<li>
           <input class="iname" value="${esc(it.name)}" data-edit-name="${i}" placeholder="内訳">
           <span class="yen">¥</span><input class="iamt" type="number" min="0" value="${Number(it.amount) || 0}" data-edit-amt="${i}">
-          <button class="link" data-del-item="${i}" title="削除">×</button></li>`).join('')
+          <button class="link" data-del-item="${i}" title="削除">×</button>
+          ${kind === 'cost' ? '' : `<div class="item-opts">
+            <span class="pay" title="カードで払う額が実際と違うときだけ入力（空欄なら実額）">カード <input type="number" min="0" placeholder="実額" value="${it.card !== null && it.card !== undefined ? it.card : ''}" data-item-card="${i}"></span>
+            <label title="支払い済みならカード支払いに数えません"><input type="checkbox" data-item-paid="${i}" ${it.paid ? 'checked' : ''}> 支払い済</label>
+            <button type="button" data-item-slide="${i}" title="この内訳だけ翌月に回す">翌月へ →</button>
+          </div>`}</li>`).join('')
       : '<li class="empty">内訳なし</li>';
     return `
       <div class="card ${open}" data-card="${esc(id)}">
@@ -450,7 +466,7 @@
             <button type="submit">追加</button>
           </form>
           ${isFixed ? '' : `<div class="note-row"><span class="note-label">備考</span><textarea rows="1" data-note placeholder="メモを書く（日程、同行者、注意点など）">${esc(note || '')}</textarea></div>`}
-          ${isFixed ? `<div class="tools"><span class="edit-budget">この月の予算 <input type="number" min="0" value="${budget}" data-budget></span><span class="sp"></span>${payHtml}</div>` : ''}
+          ${isFixed ? `<div class="tools"><span class="edit-budget">この月の予算 <input type="number" min="0" value="${budget}" data-budget></span></div>` : ''}
           ${isCost ? `<div class="tools"><span class="edit-budget">この月の金額 <input type="number" min="0" value="${budget}" data-budget></span><span class="sp"></span>${payHtml}<button type="button" data-slide title="支払いを翌月に回す">翌月へ →</button><button type="button" class="danger" data-del-cost-row>この月から削除</button></div>` : ''}
           ${isEvent ? `<div class="tools">
             ${hasItems ? '<span class="note">内訳の合計で計算</span>' : `
@@ -458,8 +474,8 @@
             <label title="使わなかったとして計算します"><input type="checkbox" data-nospend ${noSpend ? 'checked' : ''}> 出費なし</label>`}
             <span class="edit-budget">予算 <input type="number" min="0" value="${budget}" data-budget></span>
             <span class="sp"></span>
-            ${payHtml}
-            <button type="button" data-slide title="支払いを翌月に回す">翌月へ →</button>
+            ${hasItems ? '' : payHtml}
+            <button type="button" data-slide title="項目ごと翌月に回す">翌月へ →</button>
             <button type="button" data-move="-1" title="上へ" ${first ? 'disabled' : ''}>▲</button>
             <button type="button" data-move="1" title="下へ" ${last ? 'disabled' : ''}>▼</button>
             <button type="button" class="danger" data-del-event>削除</button>
@@ -519,6 +535,35 @@
         noteEl.addEventListener('input', grow);
         noteEl.addEventListener('change', () => { resolve(card).ev.note = noteEl.value.trim(); save(); render(); });
       }
+      card.querySelectorAll('[data-item-card]').forEach(inp => inp.addEventListener('change', () => {
+        const it = resolve(card).items[Number(inp.dataset.itemCard)];
+        it.card = inp.value === '' ? null : (Number(inp.value) || 0);
+        save(); render();
+      }));
+      card.querySelectorAll('[data-item-paid]').forEach(cb => cb.addEventListener('change', () => {
+        resolve(card).items[Number(cb.dataset.itemPaid)].paid = cb.checked;
+        save(); render();
+      }));
+      // 内訳1件だけ翌月へ（カードの支払い月ズレ用）
+      card.querySelectorAll('[data-item-slide]').forEach(btn => btn.addEventListener('click', () => {
+        const r = resolve(card), idx = Number(btn.dataset.itemSlide), it = r.items[idx];
+        const nextKey = shiftKey(currentKey, 1);
+        const [ny, nm] = nextKey.split('-').map(Number);
+        if (!confirm(`「${it.name}」(${yen(it.amount)}) を ${ny}年${nm}月 に移しますか？`)) return;
+        const nd = monthData(nextKey);
+        r.items.splice(idx, 1);
+        if (r.fixedKey) {
+          nd.fixed[r.fixedKey].push(it);
+        } else {
+          // 翌月に同名の項目（○月分）を作ってそこへ。予算は移した分だけ持たせて差分に影響させない
+          const label = r.ev.name + '（' + m0(currentKey) + '月分）';
+          let target = nd.events.find(e => e.name === label);
+          if (!target) { target = { id: uid(), name: label, budget: 0, items: [], note: '' }; nd.events.push(target); }
+          target.items.push(it);
+          target.budget = (Number(target.budget) || 0) + (Number(it.amount) || 0);
+        }
+        save(); render();
+      }));
       card.querySelectorAll('[data-del-item]').forEach(btn => btn.addEventListener('click', () => {
         resolve(card).items.splice(Number(btn.dataset.delItem), 1);
         save(); render();
