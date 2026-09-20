@@ -58,7 +58,7 @@
   .month-range { font-size: 11px; opacity: .75; text-align: center; font-variant-numeric: tabular-nums; margin-top: -2px; }
 
   /* ---------- layout ---------- */
-  .wrap { max-width: 640px; margin: 0 auto; padding: 0 0 120px; }
+  .wrap { max-width: 640px; margin: 0 auto; padding: 0 0 180px; }
   h2 {
     margin: 0; padding: 18px 16px 6px; font-size: 12px; font-weight: 500;
     color: var(--muted); letter-spacing: .04em; display: flex; justify-content: space-between; align-items: center;
@@ -120,8 +120,19 @@
   .tools { display: flex; align-items: center; gap: 4px; padding: 6px 8px 6px 16px; font-size: 12.5px; color: var(--muted); flex-wrap: wrap; }
   .tools .sp { flex: 1; }
   .tools .note { padding: 6px 8px; font-size: 12.5px; color: var(--muted); }
+  .confirm-row { display: flex; align-items: center; gap: 8px; padding: 12px 16px 0; font-size: 13.5px; cursor: pointer; flex-wrap: wrap; }
+  .confirm-row input { width: 16px; height: 16px; margin: 0; accent-color: var(--accent); }
+  .confirm-row small { flex-basis: 100%; padding-left: 24px; color: var(--muted); font-size: 11.5px; }
+  .summary .inner.final { grid-template-columns: 1fr 1fr; border-top: 1px dashed var(--line); margin-top: 6px; padding-top: 6px; }
+  .summary .inner.final .value { font-size: 18px; }
+  .tools .pay { display: inline-flex; align-items: center; gap: 4px; }
+  .tools .pay input[type=number] { width: 6.5em; border: none; border-bottom: 1px solid #c8c8cc; background: none; padding: 2px 4px; text-align: right; font-variant-numeric: tabular-nums; font-size: 16px; outline: none; }
+  .tools .pay input[type=number]:focus { border-color: var(--accent); }
+  .tools .pay input::placeholder { color: #c0c0c4; font-size: 13px; }
   .modal label.cost { gap: 8px; }
+  .modal label.cost select { font: inherit; font-size: 13px; color: var(--muted); border: none; background: none; outline: none; }
   .modal label.cost input.cname { text-align: left; flex: 1.4; }
+  .modal label.cost .cycle { font-size: 12px; color: var(--muted); white-space: nowrap; }
   .modal label.cost input.camt { flex: 1; }
   .modal label.cost button { color: #c8c8cc; font-size: 18px; padding: 0 4px; }
   .modal label.cost button:hover { color: var(--red); }
@@ -196,6 +207,7 @@
 </header>
 
 <div class="wrap">
+  <label class="confirm-row"><input type="checkbox" id="confirmMonth"><span>この月を確定する</span><small>固定枠の余りを引いた最終金額と、カード支払い額を出します</small></label>
   <h2><span>イベント・その他</span><button id="addEventBtn">＋ 追加</button></h2>
   <div class="list" id="eventList"></div>
 
@@ -213,6 +225,10 @@
     <div class="stat"><div class="label">終了分の差分<span id="doneCount"></span></div><div class="value" id="doneDiff"></div></div>
     <div class="stat"><div class="label">差分込みの予算</div><div class="value" id="sumAdjusted"></div></div>
   </div>
+  <div class="inner final" id="finalRow" hidden>
+    <div class="stat"><div class="label">最終金額（実質）</div><div class="value" id="sumFinal"></div></div>
+    <div class="stat"><div class="label">カード支払い</div><div class="value" id="sumCard"></div></div>
+  </div>
 </div>
 
 <div class="modal-bg" id="settingsModal">
@@ -221,7 +237,7 @@
     <div id="fixedBudgetInputs"></div>
     <h3>固定費（家賃・サブスクなど）</h3>
     <div id="fixedCostInputs"></div>
-    <div class="row"><button id="addCostBtn">＋ 固定費を追加</button></div>
+    <div class="row"><button id="addCostBtn">＋ 毎月の固定費</button><button id="addYearCostBtn">＋ 年1回の固定費</button></div>
     <p class="hint">変更は今月以降に反映されます。過去の月は各月の画面で直接編集できます。</p>
     <div class="row"><button id="closeSettings">閉じる</button><button class="primary" id="saveSettings">保存</button></div>
     <hr>
@@ -282,24 +298,38 @@
     if (!state.fixedCosts) state.fixedCosts = [];
     if (!state.months[key]) {
       state.months[key] = { fixed: {}, events: [], budgets: {}, costs: [] };
-      applySettingsTo(state.months[key]);
+      applySettingsTo(state.months[key], key);
     }
     const md = state.months[key];
     FIXED.forEach(f => { if (!md.fixed[f]) md.fixed[f] = []; });
     if (!md.budgets) md.budgets = { ...state.fixedBudgets };
     if (!md.costs) md.costs = state.fixedCosts.map(c => ({ ...c, items: [] }));
+    if (!md.fixedPay) md.fixedPay = {};
+    FIXED.forEach(f => { if (!md.fixedPay[f]) md.fixedPay[f] = { card: null, paid: false }; });
     return md;
   }
   // 設定内容をその月にコピーする（固定費の内訳メモは残す）
-  function applySettingsTo(md) {
+  function applySettingsTo(md, key) {
+    // その月で直接編集した値は設定を保存し直しても上書きしない
+    const editedB = md.editedBudgets || {};
+    const oldB = md.budgets || {};
     md.budgets = { ...state.fixedBudgets };
+    FIXED.forEach(f => { if (editedB[f]) md.budgets[f] = oldB[f]; });
     const old = md.costs || [];
     const removed = md.removedCosts || [];   // この月から外した固定費は戻さない
-    md.costs = state.fixedCosts.filter(c => !removed.includes(c.id)).map(c => {
-      const prev = old.find(o => o.id === c.id);
-      return { id: c.id, name: c.name, amount: c.amount, items: prev ? prev.items : [] };
-    });
+    const m = Number((key || '').split('-')[1]);  // 年1回の固定費は該当月だけ
+    md.costs = state.fixedCosts
+      .filter(c => !removed.includes(c.id))
+      .filter(c => c.cycle !== 'year' || !m || Number(c.month) === m)
+      .map(c => {
+        const prev = old.find(o => o.id === c.id);
+        return { id: c.id, name: c.name, amount: prev && prev.edited ? prev.amount : c.amount,
+          edited: !!(prev && prev.edited), items: prev ? prev.items : [], note: prev ? prev.note : '',
+          card: prev ? prev.card : null, paid: !!(prev && prev.paid) };
+      });
   }
+
+  const m0 = key => Number(key.split('-')[1]);
 
   // ---------- utils ----------
   const yen = n => '¥' + Math.round(n).toLocaleString('ja-JP');
@@ -317,13 +347,16 @@
     document.getElementById('monthRange').textContent = `${m}/${START_DAY} 〜 ${nm}/${START_DAY - 1}`;
 
     // fixed
-    let totalBudget = 0, totalSpent = 0;
+    let totalBudget = 0, totalSpent = 0, fixedLeft = 0, cardTotal = 0;
+    // カード支払い額: 入力があればそれ、なければ実際の額。支払い済みなら数えない
+    const cardOf = (pay, actual) => pay.paid ? 0 : (pay.card === null || pay.card === undefined || pay.card === '' ? actual : Number(pay.card) || 0);
     const fixedHtml = FIXED.map(f => {
       const budget = Number(md.budgets[f]) || 0;
       const items = md.fixed[f];
       const spent = sum(items);
-      totalBudget += budget; totalSpent += spent;
-      return cardHtml({ id: 'fixed:' + f, name: f, budget, spent, items, kind: 'fixed' });
+      totalBudget += budget; totalSpent += spent; fixedLeft += budget - spent;
+      cardTotal += cardOf(md.fixedPay[f], spent);
+      return cardHtml({ id: 'fixed:' + f, name: f, budget, spent, items, kind: 'fixed', pay: md.fixedPay[f] });
     }).join('');
     document.getElementById('fixedList').innerHTML = fixedHtml;
 
@@ -331,7 +364,8 @@
     const costHtml = md.costs.map(c => {
       const amount = Number(c.amount) || 0;
       totalBudget += amount; totalSpent += amount;
-      return cardHtml({ id: 'cost:' + c.id, name: c.name, budget: amount, spent: amount, items: c.items, kind: 'cost', note: c.note });
+      cardTotal += cardOf(c, amount);
+      return cardHtml({ id: 'cost:' + c.id, name: c.name, budget: amount, spent: amount, items: c.items, kind: 'cost', note: c.note, pay: c });
     }).join('');
     document.getElementById('costList').innerHTML = costHtml || '<div class="empty">固定費は ⚙ 設定から登録できます。</div>';
 
@@ -343,8 +377,9 @@
       totalBudget += budget; totalSpent += spent;
       const done = isDone(ev);
       if (done) { doneDiff += budget - spent; doneCount++; }
+      cardTotal += cardOf(ev, spent);
       return cardHtml({ id: 'event:' + ev.id, name: ev.name, budget, spent, items: ev.items, kind: 'event',
-        done, checked: !!ev.done, noSpend: !!ev.noSpend, hasItems: ev.items.length > 0, first: idx === 0, last: idx === md.events.length - 1, note: ev.note });
+        done, checked: !!ev.done, noSpend: !!ev.noSpend, hasItems: ev.items.length > 0, first: idx === 0, last: idx === md.events.length - 1, note: ev.note, pay: ev });
     }).join('');
     document.getElementById('eventList').innerHTML = evHtml || '<div class="empty">この月の項目はまだありません。＋ から追加できます。</div>';
     const dd = document.getElementById('doneDiff');
@@ -361,6 +396,14 @@
     sa.textContent = (adjusted < 0 ? '-' : '') + yen(Math.abs(adjusted));
     sa.className = 'value ' + (adjusted > totalBudget ? 'neg' : (adjusted < totalBudget ? 'pos' : ''));
 
+    // 確定: 固定枠の余りを引いた最終金額（実質）と、カード支払い額
+    const confirmed = !!md.confirmed;
+    document.getElementById('confirmMonth').checked = confirmed;
+    document.getElementById('finalRow').hidden = !confirmed;
+    const finalAmt = adjusted - fixedLeft;
+    document.getElementById('sumFinal').textContent = (finalAmt < 0 ? '-' : '') + yen(Math.abs(finalAmt));
+    document.getElementById('sumCard').textContent = yen(cardTotal);
+
     bindCards();
   }
 
@@ -369,7 +412,9 @@
   const isDone = ev => ev.items.length > 0 || !!ev.done || !!ev.noSpend;
   const spentOf = (ev, budget) => ev.items.length > 0 ? sum(ev.items) : (ev.done ? budget : 0);
 
-  function cardHtml({ id, name, budget, spent, items, kind, done, checked, noSpend, hasItems, first, last, note }) {
+  function cardHtml({ id, name, budget, spent, items, kind, done, checked, noSpend, hasItems, first, last, note, pay }) {
+    const payHtml = `<span class="pay" title="カードで払う額が実際と違うときだけ入力（空欄なら実際の額）">カード <input type="number" min="0" placeholder="実額" value="${pay && pay.card !== null && pay.card !== undefined ? pay.card : ''}" data-card-amt></span>
+            <label title="支払い済みならカード支払いに数えません"><input type="checkbox" data-paid ${pay && pay.paid ? 'checked' : ''}> 支払い済</label>`;
     const diff = budget - spent;
     const isFixed = kind === 'fixed', isCost = kind === 'cost', isEvent = kind === 'event';
     const label = isCost ? '固定費' : (isFixed ? '残り' : '差分');
@@ -405,14 +450,16 @@
             <button type="submit">追加</button>
           </form>
           ${isFixed ? '' : `<div class="note-row"><span class="note-label">備考</span><textarea rows="1" data-note placeholder="メモを書く（日程、同行者、注意点など）">${esc(note || '')}</textarea></div>`}
-          ${isFixed ? `<div class="tools"><span class="edit-budget">この月の予算 <input type="number" min="0" value="${budget}" data-budget></span></div>` : ''}
-          ${isCost ? `<div class="tools"><span class="edit-budget">この月の金額 <input type="number" min="0" value="${budget}" data-budget></span><span class="sp"></span><button type="button" class="danger" data-del-cost-row>この月から削除</button></div>` : ''}
+          ${isFixed ? `<div class="tools"><span class="edit-budget">この月の予算 <input type="number" min="0" value="${budget}" data-budget></span><span class="sp"></span>${payHtml}</div>` : ''}
+          ${isCost ? `<div class="tools"><span class="edit-budget">この月の金額 <input type="number" min="0" value="${budget}" data-budget></span><span class="sp"></span>${payHtml}<button type="button" data-slide title="支払いを翌月に回す">翌月へ →</button><button type="button" class="danger" data-del-cost-row>この月から削除</button></div>` : ''}
           ${isEvent ? `<div class="tools">
             ${hasItems ? '<span class="note">内訳の合計で計算</span>' : `
             <label title="予算どおり使ったとして計算します"><input type="checkbox" data-done ${checked ? 'checked' : ''}> 終了</label>
             <label title="使わなかったとして計算します"><input type="checkbox" data-nospend ${noSpend ? 'checked' : ''}> 出費なし</label>`}
             <span class="edit-budget">予算 <input type="number" min="0" value="${budget}" data-budget></span>
             <span class="sp"></span>
+            ${payHtml}
+            <button type="button" data-slide title="支払いを翌月に回す">翌月へ →</button>
             <button type="button" data-move="-1" title="上へ" ${first ? 'disabled' : ''}>▲</button>
             <button type="button" data-move="1" title="下へ" ${last ? 'disabled' : ''}>▼</button>
             <button type="button" class="danger" data-del-event>削除</button>
@@ -543,10 +590,39 @@
       });
       const bud = card.querySelector('[data-budget]');
       if (bud) bud.addEventListener('change', () => {
-        const r = resolve(card), v = Number(bud.value) || 0;
-        if (r.fixedKey) monthData(currentKey).budgets[r.fixedKey] = v;
-        else if (card.dataset.card.startsWith('cost:')) r.ev.amount = v;
+        const r = resolve(card), v = Number(bud.value) || 0, md = monthData(currentKey);
+        if (r.fixedKey) { md.budgets[r.fixedKey] = v; (md.editedBudgets = md.editedBudgets || {})[r.fixedKey] = true; }
+        else if (card.dataset.card.startsWith('cost:')) { r.ev.amount = v; r.ev.edited = true; }
         else r.ev.budget = v;
+        save(); render();
+      });
+      // カード支払い額・支払い済み
+      const payOf = () => { const r = resolve(card); return r.fixedKey ? monthData(currentKey).fixedPay[r.fixedKey] : r.ev; };
+      const cardAmt = card.querySelector('[data-card-amt]');
+      if (cardAmt) cardAmt.addEventListener('change', () => {
+        payOf().card = cardAmt.value === '' ? null : (Number(cardAmt.value) || 0);
+        save(); render();
+      });
+      const paidCb = card.querySelector('[data-paid]');
+      if (paidCb) paidCb.addEventListener('change', () => { payOf().paid = paidCb.checked; save(); render(); });
+      // 翌月へスライド（カードの支払い月ズレ用）
+      const slide = card.querySelector('[data-slide]');
+      if (slide) slide.addEventListener('click', () => {
+        const { ev } = resolve(card);
+        const nextKey = shiftKey(currentKey, 1);
+        const [ny, nm] = nextKey.split('-').map(Number);
+        if (!confirm(`「${ev.name}」を ${ny}年${nm}月 に移しますか？`)) return;
+        const md = monthData(currentKey), nd = monthData(nextKey);
+        if (card.dataset.card.startsWith('cost:')) {
+          md.costs = md.costs.filter(c => c !== ev);
+          (md.removedCosts = md.removedCosts || []).push(ev.id);
+          nd.costs = nd.costs.filter(c => c.id !== ev.id);
+          nd.costs.push({ ...ev, id: uid(), name: ev.name + '（' + m0(currentKey) + '月分）', edited: true });
+        } else {
+          md.events = md.events.filter(e => e !== ev);
+          nd.events.push(ev);
+        }
+        openCards.delete(id);
         save(); render();
       });
     });
@@ -556,6 +632,7 @@
   document.getElementById('prevMonth').onclick = () => { currentKey = shiftKey(currentKey, -1); render(); };
   document.getElementById('nextMonth').onclick = () => { currentKey = shiftKey(currentKey, 1); render(); };
   document.getElementById('todayBtn').onclick = () => { currentKey = monthKeyOf(new Date()); render(); };
+  document.getElementById('confirmMonth').addEventListener('change', e => { monthData(currentKey).confirmed = e.target.checked; save(); render(); });
 
   // ---------- settings modal ----------
   const settingsModal = document.getElementById('settingsModal');
@@ -567,9 +644,11 @@
     settingsModal.classList.add('show');
   };
   function renderCostInputs(costs) {
+    const monthOpts = sel => Array.from({ length: 12 }, (_, i) => `<option value="${i + 1}" ${Number(sel) === i + 1 ? 'selected' : ''}>${i + 1}月</option>`).join('');
     document.getElementById('fixedCostInputs').innerHTML = costs.map(c =>
-      `<label class="cost" data-cost-id="${esc(c.id)}">
-        <input type="text" class="cname" placeholder="名前（例：家賃）" value="${esc(c.name)}">
+      `<label class="cost" data-cost-id="${esc(c.id)}" data-cycle="${c.cycle === 'year' ? 'year' : 'month'}">
+        <input type="text" class="cname" placeholder="${c.cycle === 'year' ? '名前（例：年会費）' : '名前（例：家賃）'}" value="${esc(c.name)}">
+        ${c.cycle === 'year' ? `<select class="cmonth">${monthOpts(c.month || 1)}</select>` : '<span class="cycle">毎月</span>'}
         <input type="number" class="camt" min="0" placeholder="金額" value="${Number(c.amount) || 0}">
         <button type="button" data-del-cost title="削除">×</button>
       </label>`).join('') || '<p class="hint">まだ登録がありません</p>';
@@ -579,20 +658,23 @@
   }
   function readCostInputs() {
     return [...document.querySelectorAll('#fixedCostInputs label.cost')].map(l => ({
-      id: l.dataset.costId, name: l.querySelector('.cname').value.trim(), amount: Number(l.querySelector('.camt').value) || 0 }));
+      id: l.dataset.costId, name: l.querySelector('.cname').value.trim(), amount: Number(l.querySelector('.camt').value) || 0,
+      cycle: l.dataset.cycle, month: l.querySelector('.cmonth') ? Number(l.querySelector('.cmonth').value) : undefined }));
   }
-  document.getElementById('addCostBtn').onclick = () => {
-    renderCostInputs([...readCostInputs(), { id: uid(), name: '', amount: 0 }]);
+  const addCost = cycle => {
+    renderCostInputs([...readCostInputs(), { id: uid(), name: '', amount: 0, cycle, month: m0(currentKey) }]);
     const last = document.querySelector('#fixedCostInputs label.cost:last-child .cname');
     if (last) last.focus();
   };
+  document.getElementById('addCostBtn').onclick = () => addCost('month');
+  document.getElementById('addYearCostBtn').onclick = () => addCost('year');
   document.getElementById('closeSettings').onclick = () => settingsModal.classList.remove('show');
   document.getElementById('saveSettings').onclick = () => {
     document.querySelectorAll('[data-fixed]').forEach(i => { state.fixedBudgets[i.dataset.fixed] = Number(i.value) || 0; });
     state.fixedCosts = readCostInputs().filter(c => c.name);
     // 今月以降の月にだけ反映する（過去の月はそのまま）
     const thisKey = monthKeyOf(new Date());
-    Object.keys(state.months).forEach(k => { if (k >= thisKey) applySettingsTo(monthData(k)); });
+    Object.keys(state.months).forEach(k => { if (k >= thisKey) applySettingsTo(monthData(k), k); });
     monthData(thisKey);
     save(); render(); settingsModal.classList.remove('show');
   };
