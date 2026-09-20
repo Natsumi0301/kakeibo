@@ -260,6 +260,7 @@
       <button id="exportBtn">書き出す</button>
       <button id="importBtn">読み込む（上書き）</button>
     </div>
+    <p class="hint" style="text-align:center;margin-top:12px">バージョン <span id="appVersion"></span></p>
   </div>
 </div>
 
@@ -277,6 +278,7 @@
   const KEY = 'kakeibo-v1';
   const FIXED = ['交通費', '食費', '生活費'];
   const START_DAY = 12;
+  const VERSION = '2026-09-20.4';
 
   // ---------- state ----------
   let state = load();
@@ -769,6 +771,7 @@
 
   [settingsModal, eventModal].forEach(mb => mb.addEventListener('click', e => { if (e.target === mb) mb.classList.remove('show'); }));
 
+  document.getElementById('appVersion').textContent = VERSION;
   render();
 })();
 </script>
