@@ -359,17 +359,20 @@
     document.getElementById('monthRange').textContent = `${m}/${START_DAY} 〜 ${nm}/${START_DAY - 1}`;
 
     // fixed
-    let totalBudget = 0, totalSpent = 0, fixedLeft = 0, cardTotal = 0;
+    let totalBudget = 0, totalSpent = 0, fixedLeft = 0, fixedOver = 0, cardTotal = 0;
+    const confirmed = !!md.confirmed;
     // カード支払い額: 入力があればそれ、なければ実際の額。支払い済みなら数えない
     const cardOf = (pay, actual) => pay.paid ? 0 : (pay.card === null || pay.card === undefined || pay.card === '' ? actual : Number(pay.card) || 0);
     const fixedHtml = FIXED.map(f => {
       const budget = Number(md.budgets[f]) || 0;
       const items = md.fixed[f];
       const spent = sum(items);
-      totalBudget += budget; totalSpent += spent; fixedLeft += budget - spent;
-      // カード支払い: 内訳があればその金額、なければ予算額（イベントと同じルール）
-      if (items.length) items.forEach(it => { cardTotal += cardOf(it, Number(it.amount) || 0); });
-      else cardTotal += budget;
+      totalBudget += budget; totalSpent += spent;
+      // 固定枠は予算どおりに数える。超過ぶんはすぐ反映、余りは月の確定後に引く
+      fixedLeft += Math.max(0, budget - spent);
+      fixedOver += Math.max(0, spent - budget);
+      let itemsCard = 0; items.forEach(it => { itemsCard += cardOf(it, Number(it.amount) || 0); });
+      cardTotal += (confirmed || spent > budget) ? itemsCard : budget;
       return cardHtml({ id: 'fixed:' + f, name: f, budget, spent, items, kind: 'fixed', pay: md.fixedPay[f] });
     }).join('');
     document.getElementById('fixedList').innerHTML = fixedHtml;
@@ -405,7 +408,7 @@
 
     // summary: 終了したイベントは予算の代わりに実際に使った額で数えた合計
     //   = 予算合計 - 終了分の差分（超過ならその分増え、余ればその分減る）
-    const adjusted = totalBudget - doneDiff;
+    const adjusted = totalBudget - doneDiff + fixedOver;
     document.getElementById('sumBudget').textContent = yen(totalBudget);
     document.getElementById('sumSpent').textContent = yen(totalSpent);
     const sa = document.getElementById('sumAdjusted');
@@ -413,7 +416,6 @@
     sa.className = 'value ' + (adjusted > totalBudget ? 'neg' : (adjusted < totalBudget ? 'pos' : ''));
 
     // 確定: 固定枠の余りを引いた最終金額（実質）と、カード支払い額
-    const confirmed = !!md.confirmed;
     document.getElementById('confirmMonth').checked = confirmed;
     document.getElementById('finalStat').hidden = !confirmed;
     document.getElementById('finalRow').classList.toggle('confirmed', confirmed);
