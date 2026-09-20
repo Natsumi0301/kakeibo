@@ -32,6 +32,7 @@
       --accent: #3ec98c; --accent-soft: #163627; --red: #ff6b6b; --red-soft: #3a1f1f;
   }
   * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
   html { -webkit-text-size-adjust: 100%; }
   body {
     margin: 0; background: var(--bg); color: var(--text);
@@ -134,6 +135,7 @@
   .confirm-row input { width: 16px; height: 16px; margin: 0; accent-color: var(--accent); }
   .confirm-row small { flex-basis: 100%; padding-left: 24px; color: var(--muted); font-size: 11.5px; }
   .summary .inner.final { grid-template-columns: 1fr 1fr; border-top: 1px dashed var(--line); margin-top: 6px; padding-top: 6px; }
+  .summary .inner.final:not(.confirmed) { grid-template-columns: 1fr; }
   .summary .inner.final .value { font-size: 18px; }
   .tools .pay { display: inline-flex; align-items: center; gap: 4px; }
   .tools .pay input[type=number] { width: 6.5em; border: none; border-bottom: 1px solid #c8c8cc; background: none; padding: 2px 4px; text-align: right; font-variant-numeric: tabular-nums; font-size: 16px; outline: none; }
@@ -217,7 +219,7 @@
 </header>
 
 <div class="wrap">
-  <label class="confirm-row"><input type="checkbox" id="confirmMonth"><span>この月を確定する</span><small>固定枠の余りを引いた最終金額と、カード支払い額を出します</small></label>
+  <label class="confirm-row"><input type="checkbox" id="confirmMonth"><span>この月を確定する</span><small>固定枠の余りを引いた最終金額（実質）を出します</small></label>
   <h2><span>イベント・その他</span><button id="addEventBtn">＋ 追加</button></h2>
   <div class="list" id="eventList"></div>
 
@@ -235,9 +237,9 @@
     <div class="stat"><div class="label">終了分の差分<span id="doneCount"></span></div><div class="value" id="doneDiff"></div></div>
     <div class="stat"><div class="label">差分込みの予算</div><div class="value" id="sumAdjusted"></div></div>
   </div>
-  <div class="inner final" id="finalRow" hidden>
-    <div class="stat"><div class="label">最終金額（実質）</div><div class="value" id="sumFinal"></div></div>
+  <div class="inner final" id="finalRow">
     <div class="stat"><div class="label">カード支払い</div><div class="value" id="sumCard"></div></div>
+    <div class="stat" id="finalStat" hidden><div class="label">最終金額（実質）</div><div class="value" id="sumFinal"></div></div>
   </div>
 </div>
 
@@ -410,7 +412,8 @@
     // 確定: 固定枠の余りを引いた最終金額（実質）と、カード支払い額
     const confirmed = !!md.confirmed;
     document.getElementById('confirmMonth').checked = confirmed;
-    document.getElementById('finalRow').hidden = !confirmed;
+    document.getElementById('finalStat').hidden = !confirmed;
+    document.getElementById('finalRow').classList.toggle('confirmed', confirmed);
     const finalAmt = adjusted - fixedLeft;
     document.getElementById('sumFinal').textContent = (finalAmt < 0 ? '-' : '') + yen(Math.abs(finalAmt));
     document.getElementById('sumCard').textContent = yen(cardTotal);
