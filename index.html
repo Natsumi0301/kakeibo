@@ -408,7 +408,8 @@
 
     // summary: 終了したイベントは予算の代わりに実際に使った額で数えた合計
     //   = 予算合計 - 終了分の差分（超過ならその分増え、余ればその分減る）
-    const adjusted = totalBudget - doneDiff + fixedOver;
+    //   固定枠はカード支払いと同じ扱い: 超過分はすぐ足し、余りは確定後に引く
+    const adjusted = totalBudget - doneDiff + fixedOver - (confirmed ? fixedLeft : 0);
     document.getElementById('sumBudget').textContent = yen(totalBudget);
     document.getElementById('sumSpent').textContent = yen(totalSpent);
     const sa = document.getElementById('sumAdjusted');
@@ -419,7 +420,7 @@
     document.getElementById('confirmMonth').checked = confirmed;
     document.getElementById('finalStat').hidden = !confirmed;
     document.getElementById('finalRow').classList.toggle('confirmed', confirmed);
-    const finalAmt = adjusted - fixedLeft;
+    const finalAmt = adjusted;
     document.getElementById('sumFinal').textContent = (finalAmt < 0 ? '-' : '') + yen(Math.abs(finalAmt));
     document.getElementById('sumCard').textContent = yen(cardTotal);
 
