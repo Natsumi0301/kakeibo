@@ -367,7 +367,9 @@
       const items = md.fixed[f];
       const spent = sum(items);
       totalBudget += budget; totalSpent += spent; fixedLeft += budget - spent;
-      items.forEach(it => { cardTotal += cardOf(it, Number(it.amount) || 0); });
+      // カード支払い: 内訳があればその金額、なければ予算額（イベントと同じルール）
+      if (items.length) items.forEach(it => { cardTotal += cardOf(it, Number(it.amount) || 0); });
+      else cardTotal += budget;
       return cardHtml({ id: 'fixed:' + f, name: f, budget, spent, items, kind: 'fixed', pay: md.fixedPay[f] });
     }).join('');
     document.getElementById('fixedList').innerHTML = fixedHtml;
