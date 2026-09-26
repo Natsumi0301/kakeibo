@@ -175,9 +175,12 @@
   /* ---------- modal ---------- */
   .modal-bg { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.4); z-index: 10; }
   .modal-bg.show { display: flex; align-items: flex-end; justify-content: center; }
+  .modal-bg { overscroll-behavior: contain; }
+  /* 設定を開いている間は後ろの画面を動かさない */
+  html:has(.modal-bg.show), body:has(.modal-bg.show) { overflow: hidden; }
   @media (min-width: 560px) { .modal-bg.show { align-items: center; padding: 16px; } }
   .modal {
-    background: var(--card); width: 100%; max-width: 420px; max-height: 90vh; overflow: auto;
+    background: var(--card); width: 100%; max-width: 420px; max-height: 90vh; max-height: calc(100dvh - 24px - env(safe-area-inset-top)); overflow-y: auto; -webkit-overflow-scrolling: touch; overscroll-behavior: contain; touch-action: pan-y;
     border-radius: 14px 14px 0 0; padding: 8px 0 calc(12px + env(safe-area-inset-bottom));
     animation: up .18s ease-out;
   }
@@ -303,7 +306,7 @@
   const KEY = 'kakeibo-v1';
   const FIXED = ['交通費', '食費', '生活費'];
   const START_DAY = 12;
-  const VERSION = '2026-09-26.1';
+  const VERSION = '2026-09-26.2';
 
   // ---------- state ----------
   let state = load();
