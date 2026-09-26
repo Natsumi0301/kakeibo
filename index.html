@@ -197,6 +197,11 @@
   .modal .row button.primary:hover { background: var(--bar-dark); }
   .modal hr { border: none; border-top: 8px solid var(--bg); margin: 16px 0 0; }
   .hint { font-size: 12px; color: var(--muted); margin: 0; padding: 0 16px 10px; }
+  .cloud-bar { display: flex; align-items: center; gap: 10px; margin: 0 0 12px; padding: 10px 14px; border-radius: 12px; background: var(--accent-soft); font-size: 13px; }
+  .cloud-bar span { flex: 1; }
+  .cloud-bar button { flex: none; }
+  .cloud-status { font-size: 13px; color: var(--muted); margin: 4px 0 10px; }
+  .cloud-status.err { color: var(--red); }
 </style>
 </head>
 <body>
@@ -219,6 +224,7 @@
 </header>
 
 <div class="wrap">
+  <div class="cloud-bar" id="cloudBar" hidden><span>ログインすると、データがクラウドに保存されて履歴を消しても残ります。</span><button class="primary" id="loginBtn2">Googleでログイン</button></div>
   <label class="confirm-row"><input type="checkbox" id="confirmMonth"><span>この月を確定する</span><small>固定枠の余りを引いた最終金額（実質）を出します</small></label>
   <h2><span>イベント・その他</span><button id="addEventBtn">＋ 追加</button></h2>
   <div class="list" id="eventList"></div>
@@ -253,6 +259,13 @@
     <p class="hint">変更は今月以降に反映されます。過去の月は各月の画面で直接編集できます。</p>
     <div class="row"><button id="closeSettings">閉じる</button><button class="primary" id="saveSettings">保存</button></div>
     <hr>
+    <h3>クラウド保存</h3>
+    <p class="cloud-status" id="cloudStatus"></p>
+    <div class="row">
+      <button class="primary" id="loginBtn">Googleでログイン</button>
+      <button id="logoutBtn" hidden>ログアウト</button>
+    </div>
+    <hr>
     <h3>データの引き継ぎ</h3>
     <p class="hint">別のブラウザや端末に移すときは、書き出したテキストをコピーして、移行先で貼り付けて読み込んでください。</p>
     <textarea id="exportArea"></textarea>
@@ -273,12 +286,24 @@
   </div>
 </div>
 
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 <script>
 (() => {
+  // ↓ Firebaseコンソールの「プロジェクトの設定」にある値に置き換える
+  const FIREBASE_CONFIG = {
+    apiKey: 'AIzaSyCBzfuVzYTzzx5uZVwfG6w2Hrm09GL_vPc',
+    authDomain: 'kakeibo-d1b2d.firebaseapp.com',
+    projectId: 'kakeibo-d1b2d',
+    storageBucket: 'kakeibo-d1b2d.firebasestorage.app',
+    messagingSenderId: '924092861467',
+    appId: '1:924092861467:web:ffe4c70e89e34b965c3cbe',
+  };
   const KEY = 'kakeibo-v1';
   const FIXED = ['交通費', '食費', '生活費'];
   const START_DAY = 12;
-  const VERSION = '2026-09-20.4';
+  const VERSION = '2026-09-26.1';
 
   // ---------- state ----------
   let state = load();
@@ -292,7 +317,133 @@
     } catch (e) {}
     return { fixedBudgets: { 交通費: 0, 食費: 0, 生活費: 0 }, fixedCosts: [], months: {} };
   }
-  function save() { try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) {} }
+  function saveLocal() { try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) {} }
+  function save() {
+    state.updatedAt = Date.now();
+    saveLocal();
+    cloud.push();
+  }
+
+  // ---------- cloud (Firebase) ----------
+  // データは Firestore の kakeibo/{ユーザーID} に丸ごと保存する。
+  // localStorage は表示を速くするための控えで、消えてもクラウドから戻る。
+  const cloud = (() => {
+    let db = null, auth = null, user = null, docRef = null, unsub = null, timer = null, ready = false;
+    const enabled = typeof firebase !== 'undefined' && !String(FIREBASE_CONFIG.apiKey).includes('ここ');
+
+    function hasData(s) {
+      if (!s) return false;
+      if ((s.fixedCosts || []).length) return true;
+      if (Object.values(s.fixedBudgets || {}).some(v => v)) return true;
+      return Object.values(s.months || {}).some(m =>
+        (m.events || []).length || Object.values(m.fixed || {}).some(a => (a || []).length));
+    }
+    function setStatus(text, err) {
+      const el = document.getElementById('cloudStatus');
+      el.textContent = text; el.classList.toggle('err', !!err);
+    }
+    function refreshUi() {
+      const on = !!user;
+      document.getElementById('cloudBar').hidden = !enabled || on;
+      document.getElementById('loginBtn').hidden = !enabled || on;
+      document.getElementById('logoutBtn').hidden = !on;
+      if (!enabled) setStatus('クラウド保存はまだ設定されていません。', true);
+      else if (!on) setStatus('ログインしていません。今はこの端末のブラウザにだけ保存されています。', true);
+    }
+    async function upload() {
+      if (!docRef || !ready) return;
+      clearTimeout(timer); timer = null;
+      setStatus(`${user.email} で保存中…`);
+      try {
+        await docRef.set({ state: JSON.stringify(state), updatedAt: state.updatedAt || Date.now() });
+        setStatus(`${user.email} でクラウドに保存済み`);
+      } catch (e) {
+        setStatus('クラウドに保存できませんでした。通信が戻ると自動で保存されます。', true);
+      }
+    }
+    function push() {
+      if (!docRef || !ready) return;
+      clearTimeout(timer);
+      timer = setTimeout(upload, 800);
+    }
+    function useRemote(remote) {
+      state = remote; saveLocal(); render();
+    }
+    async function connect(u) {
+      user = u; ready = false;
+      docRef = db.collection('kakeibo').doc(u.uid);
+      refreshUi();
+      setStatus('クラウドのデータを確認中…');
+      try {
+        const snap = await docRef.get();
+        const remote = snap.exists ? JSON.parse(snap.data().state) : null;
+        const syncedHere = state.syncUid === u.uid;
+        if (!remote) {
+          // 初回：今の端末のデータをクラウドへ
+          state.syncUid = u.uid; ready = true; saveLocal(); await upload();
+        } else if (syncedHere) {
+          // この端末で同期済み：新しい方を使う
+          ready = true;
+          if ((remote.updatedAt || 0) > (state.updatedAt || 0)) useRemote(remote);
+          else if ((state.updatedAt || 0) > (remote.updatedAt || 0)) await upload();
+          else setStatus(`${u.email} でクラウドに保存済み`);
+        } else {
+          // 履歴を消した後や別の端末：基本はクラウドを使う
+          let keepLocal = false;
+          if (hasData(state) && hasData(remote)) {
+            keepLocal = !confirm('クラウドに保存済みのデータがあります。\n\nOK：クラウドのデータを使う（おすすめ）\nキャンセル：この端末のデータでクラウドを上書きする');
+          }
+          ready = true;
+          if (keepLocal) { state.syncUid = u.uid; saveLocal(); await upload(); }
+          else { remote.syncUid = u.uid; useRemote(remote); setStatus(`${u.email} でクラウドに保存済み`); }
+        }
+      } catch (e) {
+        setStatus('クラウドに接続できませんでした。通信を確認して開き直してください。', true);
+        return;
+      }
+      // 別の端末での変更を受け取る
+      if (unsub) unsub();
+      unsub = docRef.onSnapshot(snap => {
+        if (!snap.exists || snap.metadata.hasPendingWrites) return;
+        try {
+          const remote = JSON.parse(snap.data().state);
+          if ((remote.updatedAt || 0) > (state.updatedAt || 0)) { remote.syncUid = user.uid; useRemote(remote); }
+        } catch (e) {}
+      });
+    }
+    function disconnect() {
+      if (unsub) unsub();
+      unsub = null; user = null; docRef = null; ready = false;
+      refreshUi();
+    }
+    async function login() {
+      const provider = new firebase.auth.GoogleAuthProvider();
+      try { await auth.signInWithPopup(provider); }
+      catch (e) {
+        if (e.code === 'auth/popup-blocked' || e.code === 'auth/operation-not-supported-in-this-environment') {
+          await auth.signInWithRedirect(provider);
+        } else if (e.code !== 'auth/popup-closed-by-user' && e.code !== 'auth/cancelled-popup-request') {
+          alert('ログインできませんでした（' + e.code + '）');
+        }
+      }
+    }
+    function init() {
+      document.getElementById('loginBtn').onclick = login;
+      document.getElementById('loginBtn2').onclick = login;
+      document.getElementById('logoutBtn').onclick = async () => {
+        if (timer) await upload();
+        if (confirm('ログアウトしますか？クラウドのデータはそのまま残ります。')) auth.signOut();
+      };
+      refreshUi();
+      if (!enabled) return;
+      firebase.initializeApp(FIREBASE_CONFIG);
+      auth = firebase.auth(); db = firebase.firestore();
+      auth.onAuthStateChanged(u => { if (u) connect(u); else disconnect(); });
+      // 画面を閉じる直前に保存待ちを送る
+      document.addEventListener('visibilitychange', () => { if (document.hidden && timer) upload(); });
+    }
+    return { init, push };
+  })();
 
   // ---------- month helpers ----------
   function monthKeyOf(d) {
@@ -773,6 +924,7 @@
 
   document.getElementById('appVersion').textContent = VERSION;
   render();
+  cloud.init();
 })();
 </script>
 </body>
